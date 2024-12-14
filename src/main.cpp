@@ -35,10 +35,26 @@ int main() {
 
     std::cout << "construct skiplist (3) by moving (1):\n";
     SkipList<int> l3(std::move(l1));
-
     std::cout << "skiplist (3):\n";
     l3.print();
     std::cout << "skiplist (1):\n";
     l1.print();
+
+    std::cout << "clear (3):\n";
+    l3.clear();
+    std::cout << "skiplist (3):\n";
+    l3.print();
+
+    std::cout << "erase first 6 out of (2):\n";
+    l2.erase(l2.find(6));
+    std::cout << "skiplist (2):\n";
+    l2.print();
+
+    std::cout << "erase all 10 out of (2):\n";
+    auto er = l2.equal_range(10);
+    l2.erase(er.first, er.second);
+    std::cout << "skiplist (2):\n";
+    l2.print();
+
     return 0;
 }

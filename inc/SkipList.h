@@ -5,8 +5,8 @@
 #include <vector>
 #include <utility> // includes std::pair
 #include <Add.h> // random add
-#include <iostream>
 #include <memory>
+#include <iostream>
 
 
 template <typename T, typename Cmp = std::less<T>>
@@ -53,13 +53,13 @@ public:
     iterator lower_bound(T const &element) const;
 
     iterator upper_bound(T const &element) const;
-    /*
+    
     SkipList<T, Cmp>& clear();
 
     SkipList<T, Cmp>& erase(iterator it);
 
     SkipList<T, Cmp>& erase(iterator beg, iterator end);
-*/
+
     std::pair<iterator, iterator> equal_range(T const &element) const;
 
     iterator begin() const;
@@ -310,7 +310,6 @@ SkipList<T, Cmp>& SkipList<T, Cmp>::operator=(SkipList<T, Cmp> &&src) {
     return *this;
 }
 
-#include <iostream>
 template <typename T, typename Cmp>
 SkipList<T, Cmp>& SkipList<T, Cmp>::insert(T const &element) {
     if(this->empty()) { //добавление первого элемента
@@ -415,11 +414,10 @@ typename SkipList<T, Cmp>::size_type SkipList<T, Cmp>::size() const {
     return nodes_size;
 }
 
-
 template <typename T, typename Cmp>
 typename SkipList<T, Cmp>::iterator SkipList<T, Cmp>::find(T const &element) const {
     auto lower_bound = this->lower_bound(element);
-    if (lower_bound == this->end() || c(element, *lower_bound)) { return this->end(); }
+    if (!lower_bound.get_current() || c(element, *lower_bound)) { return this->end(); }
     return lower_bound;
 }
 
@@ -480,6 +478,85 @@ typename SkipList<T, Cmp>::iterator SkipList<T, Cmp>::upper_bound(T const &eleme
 }
 
 template <typename T, typename Cmp>
+SkipList<T, Cmp>& SkipList<T, Cmp>::clear() {
+    *this = SkipList<T, Cmp>();
+    return *this;
+}
+
+template <typename T, typename Cmp>
+SkipList<T, Cmp>& SkipList<T, Cmp>::erase(iterator it) { 
+    // чтобы не терять балланс структуры, при удалении главного элемента при наличии дубликатов 
+    // будем передавать Node первому из них
+    if (!it.get_current() || this->empty()) { return *this; }
+    if (it.get_current()->node->nexts[0] != it.get_current()) { //дубликат
+        std::prev(it).get_current()->next = it.get_current()->next;
+        if (it.get_current()->next) {
+            std::next(it).get_current()->prev = it.get_current()->prev;
+        } else {
+            tail[0] = it.get_current()->prev.lock();
+        } 
+        it.get_current()->~Triple();
+        --nodes_size;
+        return *this;
+    }
+    if (std::next(it).get_current() && *std::next(it) == *it) { //главный узел с дубликатами
+        it.get_current()->node->nexts[0] = std::next(it).get_current(); // передаем ноду дубликату
+        if (it.get_current()->prev.lock()) {
+            std::prev(it).get_current()->next = it.get_current()->next;
+        } else {
+            head[0] = it.get_current()->next;
+        }
+        if (it.get_current()->next) {
+            std::next(it).get_current()->prev = it.get_current()->prev;
+        } else {
+            tail[0] = it.get_current()->prev.lock();
+        }
+        it.get_current()->~Triple();
+        --nodes_size;
+        return *this;
+    }
+    //главный узел без дубликатов
+    auto size = it.get_current()->node->nexts.size();
+    std::shared_ptr<Triple> curr_triple;
+    while (size) {
+        curr_triple = it.get_current()->node->nexts[size - 1];
+        if (curr_triple->prev.lock()) {
+            std::prev(it).get_current()->next = curr_triple->next;
+        } else {
+            head[size - 1] = curr_triple->next;
+        }
+        if (curr_triple->next) {
+            std::next(it).get_current()->prev = curr_triple->prev;
+        } else {
+            tail[size - 1] = curr_triple->prev.lock();
+        }
+        it.get_current()->node->nexts.pop_back();
+        size = it.get_current()->node->nexts.size();
+        curr_triple->~Triple();
+    }
+    while (!head.back()) {
+        head.pop_back();
+    }
+    while (!tail.back()) {
+        tail.pop_back();
+    }
+    --nodes_size;
+    return *this;
+}
+
+template <typename T, typename Cmp>
+SkipList<T, Cmp>& SkipList<T, Cmp>::erase(iterator beg, iterator end) {
+    if (this->empty()) { return *this; }
+    auto curr = beg;
+    while (beg != end) {
+        beg++;
+        this->erase(curr);
+        curr = beg;
+    }
+    return *this;
+}
+
+template <typename T, typename Cmp>
 std::pair<typename SkipList<T, Cmp>::iterator, typename SkipList<T, Cmp>::iterator> SkipList<T, Cmp>::equal_range(T const &element) const {
     return std::pair(this->lower_bound(element), this->upper_bound(element));
 }
@@ -499,7 +576,7 @@ typename SkipList<T, Cmp>::reverse_iterator SkipList<T, Cmp>::rend() const { ret
 template <typename T, typename Cmp>
 void SkipList<T, Cmp>::print() const{
     if (this->empty()) {
-        std::cout << "empty list\n";
+        std::cout << "empty list\n\n";
         return;
     }
     for (auto it = this->begin(); it != this->end(); ++it) {
