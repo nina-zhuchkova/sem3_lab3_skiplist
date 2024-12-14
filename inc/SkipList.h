@@ -6,6 +6,7 @@
 #include <utility> // includes std::pair
 #include <Add.h> // random add
 #include <iostream>
+#include <memory>
 
 
 template <typename T, typename Cmp = std::less<T>>
@@ -71,8 +72,8 @@ public:
 
     ~SkipList () = default;
 private:
-    std::vector<std::unique_ptr<Triple>> head;
-    std::vector<Triple*> tail;
+    std::vector<std::shared_ptr<Triple>> head;
+    std::vector<std::shared_ptr<Triple>> tail;
     Cmp c;
     size_type nodes_size;
 };
@@ -83,15 +84,15 @@ struct SkipList<T, Cmp>::Node final{
     Node(T const &element): element(element), nexts() { }
     
     T element;
-    std::vector<SkipList<T, Cmp>::Triple*> nexts;
+    std::vector<std::shared_ptr<Triple>> nexts;
 };
 
 template <typename T, typename Cmp>
 struct SkipList<T, Cmp>::Triple final{
     Triple(unsigned idx, SkipList<T, Cmp>::Node *node): next(nullptr), prev(nullptr), idx(idx), node(node) { }
 
-    std::unique_ptr<Triple> next;
-    Triple *prev;
+    std::shared_ptr<Triple> next;
+    std::weak_ptr<Triple> prev;
     unsigned idx;
     std::shared_ptr<SkipList<T, Cmp>::Node> node;
 };
@@ -104,29 +105,56 @@ struct SkipList<T, Cmp>::BidirectionalIterator final{
     using pointer           = std::add_pointer_t<T>; 
     using reference         = std::add_lvalue_reference_t<T>; 
 
-    BidirectionalIterator(): BidirectionalIterator(nullptr) { }
-    explicit BidirectionalIterator(Triple *current): current(current) { }
+    BidirectionalIterator(): BidirectionalIterator(nullptr, false) { }
+    explicit BidirectionalIterator(std::shared_ptr<Triple> current, bool past_the_end = false): current(current), past_the_end(past_the_end) { }
 
-    BidirectionalIterator(BidirectionalIterator const &src): BidirectionalIterator(src.current) { }
+    BidirectionalIterator(BidirectionalIterator const &src): BidirectionalIterator(src.current, src.past_the_end) { }
     BidirectionalIterator& operator=(BidirectionalIterator const &src) {
         BidirectionalIterator tmp(src);
         std::swap(tmp.current, this->current);
+        std::swap(tmp.past_the_end, this->past_the_end);
         return *this;
     }        
 
-    reference operator*() { return current->node->element; }
-    pointer operator->() { return std::addressof(current->node->element); }
+    reference operator*() { 
+        if (past_the_end || !current) throw (std::out_of_range("Разыменование недопустимо")); 
+        return current->node->element;
+    }
 
-    BidirectionalIterator& operator++() { current = current->next ? current->next.get() : nullptr; return *this; }
-    BidirectionalIterator& operator--() { current = current->prev; return *this; }
+    pointer operator->() {
+        if (past_the_end || !current) throw (std::out_of_range("Разыменование недопустимо")); 
+        return std::addressof(current->node->element); 
+    }
+
+    BidirectionalIterator& operator++() { 
+        if (past_the_end) throw (std::out_of_range("Инкремент итератора past_the_end")); 
+        if (current) {
+            if (!current->next) {
+                past_the_end = true;
+            } else {
+                current = current->next;
+            }
+        }
+        return *this;
+    }
+
+    BidirectionalIterator& operator--() { 
+        if (past_the_end) { past_the_end = false; return *this; }
+        if (current) { current = current->prev.lock(); } 
+        else {std::out_of_range("Декремент итератора вне списка");}
+        return *this;
+    }
 
     BidirectionalIterator operator++(int) { auto tmp(*this); ++(*this); return tmp; }
     BidirectionalIterator operator--(int) { auto tmp(*this); --(*this); return tmp; }
 
-    bool operator==(BidirectionalIterator const &rha) { return this->current == rha.current; }
+    bool operator==(BidirectionalIterator const &rha) { return this->current == rha.current && this->past_the_end == rha.past_the_end; }
     bool operator!=(BidirectionalIterator const &rha) { return !(*this == rha); }
 
-    Triple * current;
+    std::shared_ptr<Triple> current;
+    bool past_the_end;  // если оператор -- past the end, то итератор хранит
+                        // указатель на последний элемент списка, но не дает к нему обратиться
+                        // ( past_the_end = true )
 };
 
 template <typename T, typename Cmp>
@@ -138,20 +166,44 @@ struct SkipList<T, Cmp>::ReverseIterator final{
     using reference         = std::add_lvalue_reference_t<T>; 
 
     ReverseIterator(): ReverseIterator(nullptr) { }
-    explicit ReverseIterator(Triple * current): current(current) { }
+    explicit ReverseIterator(std::shared_ptr<Triple> current, bool past_the_end = false): current(current), past_the_end(past_the_end) { }
 
-    ReverseIterator(ReverseIterator const &src): ReverseIterator(src.current) { }
+    ReverseIterator(ReverseIterator const &src): ReverseIterator(src.current, src.past_the_end) { }
     ReverseIterator& operator=(ReverseIterator const &src) {
         ReverseIterator tmp(src);
         std::swap(tmp.current, this->current);
+        std::swap(tmp.past_the_end, this->past_the_end);
         return *this;
     }        
 
-    reference operator*() { return current->node->element; }
-    pointer operator->() { return std::addressof(current->node->element); }
+    reference operator*() { 
+        if (past_the_end || !current) throw (std::out_of_range("Разыменование недопустимо")); 
+        return current->node->element;
+    }
 
-    ReverseIterator& operator++() { current = current->prev; return *this; }
-    ReverseIterator& operator--() { current = current->next ? current->next.get() : nullptr; return *this; }
+    pointer operator->() {
+        if (past_the_end || !current) throw (std::out_of_range("Разыменование недопустимо")); 
+        return std::addressof(current->node->element); 
+    }
+
+    BidirectionalIterator& operator++() { 
+        if (past_the_end) throw (std::out_of_range("Инкремент итератора past_the_end")); 
+        if (current) {
+            if (!current->prev) {
+                past_the_end = true;
+            } else {
+                current = current->prev.lock();
+            }
+        }
+        return *this;
+    }
+
+    BidirectionalIterator& operator--() { 
+        if (past_the_end) { past_the_end = false; return *this; }
+        if (current) { current = current->next; } 
+        else {std::out_of_range("Декремент итератора вне списка");}
+        return *this;
+    }
 
     ReverseIterator operator++(int) { auto tmp(*this); --(*this); return tmp; }
     ReverseIterator operator--(int) { auto tmp(*this); ++(*this); return tmp; }
@@ -159,7 +211,8 @@ struct SkipList<T, Cmp>::ReverseIterator final{
     bool operator==(ReverseIterator const &rha) { return this->current == rha.current; }
     bool operator!=(ReverseIterator const &rha) { return !(*this == rha); }
 
-    Triple * current;
+    std::shared_ptr<Triple> current;
+    bool past_the_end;
 };
 
 template <typename T, typename Cmp>
@@ -186,7 +239,8 @@ SkipList<T, Cmp>& SkipList<T, Cmp>::operator=(SkipList<T, Cmp> &&src) {
 #include <iostream>
 template <typename T, typename Cmp>
 SkipList<T, Cmp>& SkipList<T, Cmp>::insert(T const &element) {
-     // тут хуйня не смотри
+     
+     /*
     if (this->empty()) {
         std::unique_ptr<Triple> triple(new Triple{std::move(t), nullptr, nullptr});
         head.push_back(List<Triple>());
@@ -201,7 +255,7 @@ SkipList<T, Cmp>& SkipList<T, Cmp>::insert(T const &element) {
         ++nodes_size;
         return *this;
     }
-    
+    */
     return *this;
 }
 
@@ -222,12 +276,12 @@ typename SkipList<T, Cmp>::iterator SkipList<T, Cmp>::lower_bound(T const &eleme
         return iterator(); // empty iterator
     }
     auto idx = head.size() - 1;
-    auto current_triple = iterator(head.back().get()); 
+    auto current_triple = iterator(head.back()); 
     if ((!c(*current_triple, element)) && (!c(element, *current_triple))) { //==
         return iterator(current_triple.current->node->nexts[0]);
     }
-    while   (current_triple.current != nullptr) {
-        if (std::next(current_triple).current == nullptr) {
+    while   (current_triple.current) {
+        if (!std::next(current_triple).current) {
             if (idx == 0) {
                 return this->end();
             }
@@ -261,13 +315,13 @@ std::pair<typename SkipList<T, Cmp>::iterator, typename SkipList<T, Cmp>::iterat
 }
 
 template <typename T, typename Cmp>
-typename SkipList<T, Cmp>::iterator SkipList<T, Cmp>::begin() const { return head.empty() ? iterator() :iterator(head[0].get()); }
+typename SkipList<T, Cmp>::iterator SkipList<T, Cmp>::begin() const { return head.empty() ? iterator() : iterator(head[0]); }
 
 template <typename T, typename Cmp>
-typename SkipList<T, Cmp>::iterator SkipList<T, Cmp>::end() const { return iterator(); }
+typename SkipList<T, Cmp>::iterator SkipList<T, Cmp>::end() const { return tail.empty() ? iterator() : iterator(tail[0], true); }
 
 template <typename T, typename Cmp>
-typename SkipList<T, Cmp>::reverse_iterator SkipList<T, Cmp>::rbegin() const { return reverse_iterator(tail[0]); }
+typename SkipList<T, Cmp>::reverse_iterator SkipList<T, Cmp>::rbegin() const { return tail.empty() ? reverse_iterator() : reverse_iterator(tail[0]); }
 
 template <typename T, typename Cmp>
-typename SkipList<T, Cmp>::reverse_iterator SkipList<T, Cmp>::rend() const { return reverse_iterator(); }
+typename SkipList<T, Cmp>::reverse_iterator SkipList<T, Cmp>::rend() const { return head.empty() ? reverse_iterator() : reverse_iterator(head[0], true); }
