@@ -1,6 +1,5 @@
 #include <SkipList.h>
 #include <iostream>
-#include <memory>
 
 int main() {
     int arr[] = {1, 3, 3, 2, 10};
