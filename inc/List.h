@@ -2,6 +2,7 @@
 #include <type_traits> // includes std::add_lvalue_reference_t, std::add_pointer_t
 #include <memory> // includes smart pointers
 #include <iterator>
+#include <iostream>
 
 template <typename T>
 struct List final {
@@ -15,8 +16,7 @@ private:
 
     std::unique_ptr<Node> head;
     Node *tail;
-
-    /* внутренний класс итератора */
+public:
     struct BidirectionalIterator final {
         using iterator_category = std::bidirectional_iterator_tag;
         using difference_type   = int;
@@ -36,6 +36,7 @@ private:
 
         reference operator*() { return current->element; }
         pointer operator->() { return std::addressof(current->element); }
+        pointer operator&() { return std::addressof(current->element); }
 
         BidirectionalIterator& operator++() { current = current->next ? current->next.get() : nullptr; return *this; }
         BidirectionalIterator& operator--() { current = current->prev; return *this; }
@@ -68,6 +69,7 @@ private:
 
         reference operator*() { return current->element; }
         pointer operator->() { return std::addressof(current->element); }
+        pointer operator&() { return std::addressof(current->element); }
 
         ReverseIterator& operator++() { current = current->prev ? current->prev.get() : nullptr; return *this; }
         ReverseIterator& operator--() { current = current->next; return *this; }
@@ -80,7 +82,6 @@ private:
 
         Node *current;
     };
-public:
     using iterator          = BidirectionalIterator;
     using reverse_iterator  = ReverseIterator;
     using value_type        = T; 
@@ -121,7 +122,7 @@ public:
     reverse_iterator rbegin() const { return reverse_iterator(tail); }
     reverse_iterator rend() const { return reverse_iterator(); }
 
-    List& push_front(T t) {
+    List& push_front(T const &t) {
         std::unique_ptr<Node> node(new Node{std::move(t), nullptr, nullptr});
         if (!head) {
             head = std::move(node);
@@ -134,7 +135,7 @@ public:
         return *this;
     }
 
-    List& push_back(T t) {
+    List& push_back(T const &t) {
         std::unique_ptr<Node> node(new Node{std::move(t), nullptr, nullptr});
         if (!head) {
             head = std::move(node);
@@ -147,7 +148,7 @@ public:
         return *this;
     }
 
-    List& push_after(T t, iterator it) {
+    List& push_after(T const &t, iterator it) {
         std::unique_ptr<Node> node(new Node{std::move(t), std::move(it.current->next), it.current});
         it.current->next = std::move(node);
         if (it.current->next->next) { it.current->next->next->prev = it.current->next.get(); }
