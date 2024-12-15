@@ -72,7 +72,7 @@ public:
 
     void print() const;
 
-    ~SkipList () = default;
+    ~SkipList () { this->clear();}
 private:
     std::vector<std::shared_ptr<Triple>> head;
     std::vector<std::shared_ptr<Triple>> tail;
@@ -84,6 +84,7 @@ private:
 template <typename T, typename Cmp>
 struct SkipList<T, Cmp>::Node final{
     Node(T const &element): element(element), nexts() { }
+    ~Node() { }
     
     T element;
     std::vector<std::shared_ptr<Triple>> nexts;
@@ -99,7 +100,7 @@ struct SkipList<T, Cmp>::Triple final{
             prev(prev), 
             idx(idx), 
             node(node) { }
-
+    ~Triple() { }
     std::shared_ptr<Triple> next;
     std::weak_ptr<Triple> prev;
     unsigned idx;
@@ -340,7 +341,6 @@ SkipList<T, Cmp>& SkipList<T, Cmp>::insert(T const &element) {
         ++nodes_size;
         return *this;
     } 
-
     // если нашего элемента еще не было
     auto newNode = std::make_shared<Node>(Node(element));
     auto prev = (lb.get_current() == head[0]) ? reverse_iterator() : reverse_iterator(std::prev(lb).get_current());
@@ -479,7 +479,19 @@ typename SkipList<T, Cmp>::iterator SkipList<T, Cmp>::upper_bound(T const &eleme
 
 template <typename T, typename Cmp>
 SkipList<T, Cmp>& SkipList<T, Cmp>::clear() {
-    *this = SkipList<T, Cmp>();
+    for (int i = head.size() - 1; i >= 0; --i) {
+        while(head[i]) { 
+            while (head[i]->next && head[i]->next->node->element == head[i]->node->element) {
+                head[i] = head[i]->next; 
+            }
+            head[i]->node->nexts.pop_back();
+            head[i] = head[i]->next; 
+        }
+        tail[i].reset();
+        head.pop_back();
+        tail.pop_back();
+    }
+    nodes_size = 0;
     return *this;
 }
 
@@ -576,7 +588,7 @@ typename SkipList<T, Cmp>::reverse_iterator SkipList<T, Cmp>::rend() const { ret
 template <typename T, typename Cmp>
 void SkipList<T, Cmp>::print() const{
     if (this->empty()) {
-        std::cout << "empty list\n\n";
+        std::cout << "empty list\n";
         return;
     }
     for (auto it = this->begin(); it != this->end(); ++it) {
